@@ -1,0 +1,352 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id       String  @id @default(uuid())
+  email    String  @unique
+  password String
+  name     String
+  role     Role    @default(EMPLOYEE)
+  isActive Boolean @default(true)
+
+  departmentId String?
+  department   Department? @relation("DepartmentEmployees", fields: [departmentId], references: [id])
+
+  managedDepartments Department[] @relation("DepartmentHead")
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  allocations         AssetAllocation[]
+  maintenanceRequests MaintenanceRequest[] @relation("RequestedMaintenance")
+  assignedMaintenance MaintenanceRequest[] @relation("AssignedMaintenance")
+  transferRequests    TransferRequest[]    @relation("RequestedTransfers")
+  approvedTransfers   TransferRequest[]    @relation("ApprovedTransfers")
+  bookings            ResourceBooking[]
+  approvedBookings    ResourceBooking[]    @relation("ApprovedBookings")
+  notifications       Notification[]
+  activityLogs        ActivityLog[]
+  auditItems          AuditItem[]          @relation("AuditedBy")
+}
+
+enum Role {
+  ADMIN
+  ASSET_MANAGER
+  DEPARTMENT_HEAD
+  EMPLOYEE
+}
+
+model Department {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  isActive    Boolean @default(true)
+
+  parentId    String?
+  parent      Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children    Department[] @relation("DepartmentHierarchy")
+
+  headId      String?
+  head        User?        @relation("DepartmentHead", fields: [headId], references: [id])
+
+  users       User[]       @relation("DepartmentEmployees")
+  assets      Asset[]
+  auditCycles AuditCycle[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model AssetCategory {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  icon        String?
+  isActive    Boolean @default(true)
+
+  assets Asset[]
+  auditCycles AuditCycle[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Location {
+  id      String  @id @default(uuid())
+  name    String
+  address String?
+
+  assets Asset[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Asset {
+  id           String      @id @default(uuid())
+  name         String
+  description  String?
+  serialNumber String?     @unique
+  assetTag     String      @unique
+  status       AssetStatus @default(AVAILABLE)
+  purchaseDate DateTime?
+  purchaseCost Float?
+  vendor       String?
+  warrantyExpiry DateTime?
+  condition    String?
+  isShared     Boolean     @default(false)
+  imageUrl     String?
+  documents    String[]
+
+  categoryId String
+  category   AssetCategory @relation(fields: [categoryId], references: [id])
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  allocations         AssetAllocation[]
+  maintenanceRequests MaintenanceRequest[]
+  transferRequests    TransferRequest[]
+  bookings            ResourceBooking[]
+  auditItems          AuditItem[]
+}
+
+enum AssetStatus {
+  AVAILABLE
+  ALLOCATED
+  RESERVED
+  UNDER_MAINTENANCE
+  LOST
+  RETIRED
+  DISPOSED
+}
+
+model AssetAllocation {
+  id      String @id @default(uuid())
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id])
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+
+  allocatedAt DateTime  @default(now())
+  expectedReturnDate DateTime?
+  returnedAt  DateTime?
+  notes       String?
+
+  @@index([assetId])
+  @@index([userId])
+}
+
+model TransferRequest {
+  id      String @id @default(uuid())
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id])
+
+  requesterId String
+  requester   User   @relation("RequestedTransfers", fields: [requesterId], references: [id])
+
+  approverId String?
+  approver   User?   @relation("ApprovedTransfers", fields: [approverId], references: [id])
+
+  status TransferStatus @default(PENDING)
+  reason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([requesterId])
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+model ResourceBooking {
+  id      String @id @default(uuid())
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id])
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+
+  startTime DateTime
+  endTime   DateTime
+  purpose   String?
+  status    BookingStatus @default(PENDING)
+  
+  approverId String?
+  approver   User?   @relation("ApprovedBookings", fields: [approverId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([userId])
+}
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model MaintenanceRequest {
+  id          String @id @default(uuid())
+  assetId     String
+  asset       Asset  @relation(fields: [assetId], references: [id])
+  requesterId String
+  requester   User   @relation("RequestedMaintenance", fields: [requesterId], references: [id])
+
+  description String
+  priority    MaintenancePriority @default(MEDIUM)
+  cost        Float?
+  status      MaintenanceStatus @default(PENDING)
+  
+  technicianId String?
+  technician   User? @relation("AssignedMaintenance", fields: [technicianId], references: [id])
+  
+  estimatedCompletionDate DateTime?
+  completedAt  DateTime?
+  resolvedAt   DateTime?
+  notes        String?
+  resolution   String?
+  attachments  String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([requesterId])
+  @@index([technicianId])
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MaintenanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  TECHNICIAN_ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model AuditCycle {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  startDate   DateTime
+  endDate     DateTime?
+  status      AuditStatus @default(OPEN)
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  locationId   String?
+  location     Location?   @relation(fields: [locationId], references: [id])
+
+  auditors     User[]      @relation("AuditCycleAuditors")
+
+  auditItems AuditItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum AuditStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+}
+
+model AuditItem {
+  id           String     @id @default(uuid())
+  auditCycleId String
+  auditCycle   AuditCycle @relation(fields: [auditCycleId], references: [id])
+
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id])
+
+  status AuditItemStatus @default(PENDING)
+  notes  String?
+  photoUrl String?
+
+  auditedById String?
+  auditedBy   User?     @relation("AuditedBy", fields: [auditedById], references: [id])
+  auditedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([auditCycleId])
+  @@index([assetId])
+}
+
+enum AuditItemStatus {
+  PENDING
+  VERIFIED
+  MISSING
+  DAMAGED
+  RETIRED
+}
+
+model Notification {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  title   String
+  message String
+  isRead  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model ActivityLog {
+  id         String @id @default(uuid())
+  action     String
+  entityType String
+  entityId   String
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  details String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+}

@@ -1,0 +1,42 @@
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: assetflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: assetflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: assetflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assetflow -d assetflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    image: assetflow:latest
+    container_name: assetflow-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgresql://assetflow:${POSTGRES_PASSWORD}@postgres:5432/assetflow?schema=public
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
